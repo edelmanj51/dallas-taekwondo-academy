@@ -2,11 +2,13 @@
 /**
  * fill-template.js
  * Reads client-data.json, replaces all [TOKEN] placeholders in every .html
- * file in this directory, and writes output to ./dist/.
+ * file in _src/, and writes the filled output to the repo root.
+ *
+ * Cloudflare Pages serves from the root directory — no build step required.
  *
  * Usage:
- *   node fill-template.js
- *   node fill-template.js --check   (only report unfilled tokens, no output)
+ *   node fill-template.js          (fill and write to root)
+ *   node fill-template.js --check  (report unfilled tokens, no output)
  */
 
 const fs   = require('fs');
@@ -14,40 +16,23 @@ const path = require('path');
 
 const CHECK_ONLY = process.argv.includes('--check');
 const TOKEN_RE   = /\[([A-Z][A-Z 0-9_]*)\]/g;
+const SRC_DIR    = '_src';
 
 // ── Load client data ──────────────────────────────────────────────────────
 if (!fs.existsSync('client-data.json')) {
-  console.error('ERROR: client-data.json not found. Create it before running.');
+  console.error('ERROR: client-data.json not found.');
   process.exit(1);
 }
 const data = JSON.parse(fs.readFileSync('client-data.json', 'utf8'));
 
-// ── Collect HTML files ────────────────────────────────────────────────────
-const htmlFiles = fs.readdirSync('.').filter(f => f.endsWith('.html')).sort();
-
-if (!CHECK_ONLY) {
-  if (!fs.existsSync('dist')) fs.mkdirSync('dist');
-  const imgSrc = path.join('.', 'images');
-  const imgDst = path.join('dist', 'images');
-  if (fs.existsSync(imgSrc)) {
-    const copyDir = (src, dst) => {
-      if (!fs.existsSync(dst)) fs.mkdirSync(dst, { recursive: true });
-      for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-        const s = path.join(src, entry.name);
-        const d = path.join(dst, entry.name);
-        if (entry.isDirectory()) copyDir(s, d);
-        else fs.copyFileSync(s, d);
-      }
-    };
-    copyDir(imgSrc, imgDst);
-  }
-}
+// ── Collect HTML source files ─────────────────────────────────────────────
+const htmlFiles = fs.readdirSync(SRC_DIR).filter(f => f.endsWith('.html')).sort();
 
 // ── Process each file ─────────────────────────────────────────────────────
 const unfilled = new Set();
 
 for (const file of htmlFiles) {
-  let content = fs.readFileSync(file, 'utf8');
+  let content = fs.readFileSync(path.join(SRC_DIR, file), 'utf8');
 
   // Replace known tokens from client-data.json (including empty values → strip)
   for (const [key, value] of Object.entries(data)) {
@@ -64,7 +49,7 @@ for (const file of htmlFiles) {
   content = content.replace(TOKEN_RE, '');
 
   if (!CHECK_ONLY) {
-    fs.writeFileSync(path.join('dist', file), content, 'utf8');
+    fs.writeFileSync(file, content, 'utf8');
     console.log(`  ✓  ${file}`);
   }
 }
@@ -77,5 +62,5 @@ if (unfilled.size > 0) {
   }
   if (CHECK_ONLY) process.exit(1);
 } else {
-  console.log('\n✅  All tokens filled. Output in ./dist/');
+  console.log('\n✅  All tokens filled. Root HTML updated — push to deploy.');
 }
