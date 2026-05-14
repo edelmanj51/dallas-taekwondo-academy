@@ -29,11 +29,17 @@ if (!CHECK_ONLY) {
   if (!fs.existsSync('dist')) fs.mkdirSync('dist');
   const imgSrc = path.join('.', 'images');
   const imgDst = path.join('dist', 'images');
-  if (fs.existsSync(imgSrc) && !fs.existsSync(imgDst)) {
-    fs.mkdirSync(imgDst);
-    for (const img of fs.readdirSync(imgSrc)) {
-      fs.copyFileSync(path.join(imgSrc, img), path.join(imgDst, img));
-    }
+  if (fs.existsSync(imgSrc)) {
+    const copyDir = (src, dst) => {
+      if (!fs.existsSync(dst)) fs.mkdirSync(dst, { recursive: true });
+      for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+        const s = path.join(src, entry.name);
+        const d = path.join(dst, entry.name);
+        if (entry.isDirectory()) copyDir(s, d);
+        else fs.copyFileSync(s, d);
+      }
+    };
+    copyDir(imgSrc, imgDst);
   }
 }
 
@@ -43,19 +49,19 @@ const unfilled = new Set();
 for (const file of htmlFiles) {
   let content = fs.readFileSync(file, 'utf8');
 
-  // Replace known tokens from client-data.json
+  // Replace known tokens from client-data.json (including empty values → strip)
   for (const [key, value] of Object.entries(data)) {
-    if (value === '' || value == null) continue;
     const placeholder = `[${key}]`;
-    content = content.split(placeholder).join(value);
+    content = content.split(placeholder).join(value ?? '');
   }
 
-  // Collect any remaining unfilled tokens
+  // Collect any remaining unfilled tokens, then strip them
   let m;
   TOKEN_RE.lastIndex = 0;
   while ((m = TOKEN_RE.exec(content)) !== null) {
     unfilled.add(m[1]);
   }
+  content = content.replace(TOKEN_RE, '');
 
   if (!CHECK_ONLY) {
     fs.writeFileSync(path.join('dist', file), content, 'utf8');
